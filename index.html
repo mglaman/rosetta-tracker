@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rosetta tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f5f6f8;
+    --panel: #ffffff;
+    --ink: #1b2430;
+    --ink-soft: #5b6774;
+    --line: #dde2e8;
+    --link: #0b6bb2;
+    --danger: #b3261e;
+
+    --status-active: #8a94a0;
+    --status-needs-work: #d9534f;
+    --status-needs-review: #e8b923;
+    --status-rtbc: #4caf50;
+    --status-fixed: #2e7d32;
+    --status-postponed: #6c8ebf;
+    --status-closed: #b0b8c1;
+
+    --column-open: #5b6774;
+    --column-mr: #7c4dbd;
+    --column-closed: #2e7d32;
+
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #151a20;
+      --panel: #1f262e;
+      --ink: #e8ecf0;
+      --ink-soft: #9aa6b2;
+      --line: #313a44;
+      --link: #6ab4ec;
+      --status-closed: #4b5563;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #151a20;
+    --panel: #1f262e;
+    --ink: #e8ecf0;
+    --ink-soft: #9aa6b2;
+    --line: #313a44;
+    --link: #6ab4ec;
+    --status-closed: #4b5563;
+  }
+
+  * { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.45;
+  }
+  a { color: var(--link); }
+  input, select {
+    font: inherit;
+    color: inherit;
+  }
+  input:focus-visible, select:focus-visible, a:focus-visible {
+    outline: 2px solid var(--link);
+    outline-offset: 2px;
+  }
+
+  header {
+    padding: 1.25rem 16px 1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .header-inner {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid;
+    gap: 0.75rem;
+  }
+  h1 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0;
+  }
+  h1 small {
+    font-weight: 400;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    margin-left: 0.5rem;
+  }
+  .filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .filters input, .filters select {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--paper);
+  }
+  .filters input { flex: 1 1 280px; }
+  .filters select { flex: 0 1 220px; min-width: 0; }
+  a.button {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0.45rem 0.8rem;
+    text-decoration: none;
+    color: var(--ink);
+  }
+  a.button:hover { border-color: var(--ink-soft); }
+  .toolbar {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+  }
+  .toolbar .spacer { flex: 1; }
+  .notice {
+    color: var(--danger);
+    font-size: 0.9rem;
+    min-height: 1.3em;
+  }
+  .notice:empty { display: none; }
+
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1rem 16px 3rem;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  @media (max-width: 900px) {
+    .board { grid-template-columns: 1fr; }
+  }
+  .column h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 3px solid var(--column-color);
+    display: flex;
+    justify-content: space-between;
+    font-variant-numeric: tabular-nums;
+  }
+  .column h2 span { color: var(--ink-soft); font-weight: 400; }
+  .column[data-column="open"] { --column-color: var(--column-open); }
+  .column[data-column="mr"] { --column-color: var(--column-mr); }
+  .column[data-column="closed"] { --column-color: var(--column-closed); }
+  .cards {
+    display: grid;
+    gap: 0.6rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .empty {
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    padding: 0.5rem 0;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 6px solid var(--status-color, var(--status-active));
+    border-radius: var(--radius);
+    padding: 0.6rem 0.7rem 0.6rem 0.8rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .card-top {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .card-top .project { font-weight: 500; color: var(--ink); }
+  .card-top .source {
+    font-size: 0.75rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .card-title {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+  .card-title a { color: inherit; text-decoration: none; }
+  .card-title a:hover { text-decoration: underline; }
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.6rem;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+  }
+  .status-name { color: var(--ink); font-weight: 500; }
+  .mrs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 0.82rem;
+  }
+  .mr {
+    display: inline-flex;
+    gap: 0.3rem;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    text-decoration: none;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .mr .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--mr-color);
+  }
+  .mr[data-state="opened"] { --mr-color: var(--column-mr); }
+  .mr[data-state="merged"] { --mr-color: var(--status-fixed); }
+  .mr[data-state="closed"] { --mr-color: var(--status-closed); }
+  .mr[data-draft="true"] { color: var(--ink-soft); }
+  .card.stale { opacity: 0.7; }
+  .card .problem { color: var(--danger); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>Rosetta tracker <small>Tool API and exposing Drupal's capabilities to agents</small></h1>
+    <div class="filters" role="search">
+      <input id="search" type="search" autocomplete="off" spellcheck="false"
+        placeholder="Filter by title, status, tag, or #id" aria-label="Filter work items">
+      <select id="project" aria-label="Project">
+        <option value="">All projects</option>
+      </select>
+    </div>
+    <div class="toolbar">
+      <span id="generated-at"></span>
+      <span class="spacer"></span>
+      <a class="button" id="suggest" target="_blank" rel="noopener" hidden>Suggest an item</a>
+    </div>
+    <div class="notice" id="notice" role="status" aria-live="polite"></div>
+  </div>
+</header>
+<main>
+  <div class="board">
+    <section class="column" data-column="open" aria-labelledby="h-open">
+      <h2 id="h-open">Open <span data-count></span></h2>
+      <ul class="cards" data-cards></ul>
+    </section>
+    <section class="column" data-column="mr" aria-labelledby="h-mr">
+      <h2 id="h-mr">Has MR <span data-count></span></h2>
+      <ul class="cards" data-cards></ul>
+    </section>
+    <section class="column" data-column="closed" aria-labelledby="h-closed">
+      <h2 id="h-closed">Closed <span data-count></span></h2>
+      <ul class="cards" data-cards></ul>
+    </section>
+  </div>
+</main>
+
+<script>
+// @ts-check
+'use strict';
+
+const SNAPSHOT_URL = 'data.json';
+
+/** @typedef {{ iid: number, title: string, state: string, draft: boolean, webUrl: string }} MergeRequestSummary */
+/**
+ * @typedef {object} WorkItem
+ * @property {string} project
+ * @property {number} iid
+ * @property {'gitlab' | 'drupalorg' | 'unknown'} source
+ * @property {string} title
+ * @property {'opened' | 'closed'} state
+ * @property {{ key: string, name: string } | null} status
+ * @property {string[]} tags
+ * @property {string} webUrl
+ * @property {string} updatedAt
+ * @property {MergeRequestSummary[]} mergeRequests
+ * @property {string | null} problem
+ */
+/** @typedef {{ generatedAt: string, itemsEditUrl: string | null, items: WorkItem[] }} Snapshot */
+/** @typedef {{ query: string, project: string }} Filters */
+
+/** @type {Record<string, string>} */
+const STATUS_COLORS = {
+  active: 'var(--status-active)',
+  accepted: 'var(--status-active)',
+  'needs-work': 'var(--status-needs-work)',
+  'needs-review': 'var(--status-needs-review)',
+  rtbc: 'var(--status-rtbc)',
+  fixed: 'var(--status-fixed)',
+  postponed: 'var(--status-postponed)',
+  'to-be-ported': 'var(--status-postponed)',
+  closed: 'var(--status-closed)',
+};
+
+/** @param {unknown} error */
+const errorMessage = (error) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * @param {WorkItem} item
+ * @returns {'open' | 'mr' | 'closed'}
+ */
+function columnFor(item) {
+  if (item.state === 'closed') return 'closed';
+  if (item.mergeRequests.length > 0) return 'mr';
+  return 'open';
+}
+
+/** @param {string} iso */
+function relativeTime(iso) {
+  if (!iso) return '';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 60) return `${days} d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/**
+ * @param {string} tag
+ * @param {Record<string, string>} attributes
+ * @param {(Node | string)[]} children
+ */
+function el(tag, attributes = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [name, value] of Object.entries(attributes)) {
+    if (name === 'text') node.textContent = value;
+    else node.setAttribute(name, value);
+  }
+  node.append(...children);
+  return node;
+}
+
+/** @param {WorkItem} item */
+function renderCard(item) {
+  const card = el('li', { class: 'card', 'data-source': item.source });
+  if (item.status) card.style.setProperty('--status-color', STATUS_COLORS[item.status.key] ?? 'var(--status-active)');
+  if (item.state === 'closed') card.style.setProperty('--status-color', 'var(--status-closed)');
+  if (item.problem) card.classList.add('stale');
+
+  const top = el('div', { class: 'card-top' }, [
+    el('span', { class: 'project', text: item.project }),
+    el('span', { text: `#${item.iid}` }),
+  ]);
+  if (item.source === 'drupalorg') {
+    top.append(el('span', { class: 'source', title: 'Issue queue on drupal.org', text: 'drupal.org' }));
+  }
+
+  card.append(
+    top,
+    el('p', { class: 'card-title' }, [
+      el('a', { href: item.webUrl, target: '_blank', rel: 'noopener', text: item.title || `${item.project}#${item.iid}` }),
+    ]),
+  );
+
+  const meta = el('div', { class: 'card-meta' });
+  if (item.status) meta.append(el('span', { class: 'status-name', text: item.status.name }));
+  for (const tag of item.tags) meta.append(el('span', { text: tag }));
+  if (item.updatedAt) meta.append(el('span', { text: `updated ${relativeTime(item.updatedAt)}` }));
+  if (meta.childElementCount > 0) card.append(meta);
+
+  if (item.mergeRequests.length > 0) {
+    card.append(el('ul', { class: 'mrs' }, item.mergeRequests.map((mr) =>
+      el('li', {}, [
+        el('a', {
+          class: 'mr',
+          href: mr.webUrl,
+          target: '_blank',
+          rel: 'noopener',
+          'data-state': mr.state,
+          'data-draft': String(mr.draft),
+          title: mr.title,
+        }, [
+          el('span', { class: 'dot', 'aria-hidden': 'true' }),
+          `!${mr.iid} ${mr.draft ? 'draft' : mr.state}`,
+        ]),
+      ]),
+    )));
+  }
+
+  if (item.problem) card.append(el('div', { class: 'problem', text: item.problem }));
+  return card;
+}
+
+/**
+ * @param {WorkItem} item
+ * @param {Filters} filters
+ */
+function matchesFilters(item, filters) {
+  if (filters.project && item.project !== filters.project) return false;
+  const query = filters.query.trim().toLowerCase().replace(/^#/, '');
+  if (!query) return true;
+  return [item.title, item.project, String(item.iid), item.status?.name ?? '', ...item.tags]
+    .join(' ')
+    .toLowerCase()
+    .includes(query);
+}
+
+/**
+ * @param {WorkItem[]} items
+ * @param {Filters} filters
+ */
+function renderBoard(items, filters) {
+  /** @type {Record<'open' | 'mr' | 'closed', WorkItem[]>} */
+  const columns = { open: [], mr: [], closed: [] };
+  for (const item of items) {
+    if (matchesFilters(item, filters)) columns[columnFor(item)].push(item);
+  }
+  for (const list of Object.values(columns)) {
+    list.sort((a, b) => a.project.localeCompare(b.project) || b.updatedAt.localeCompare(a.updatedAt));
+  }
+  for (const section of document.querySelectorAll('.column')) {
+    const column = /** @type {'open' | 'mr' | 'closed'} */ (section.getAttribute('data-column'));
+    const columnItems = columns[column];
+    const count = section.querySelector('[data-count]');
+    const list = section.querySelector('[data-cards]');
+    if (!count || !list) continue;
+    count.textContent = String(columnItems.length);
+    list.replaceChildren(...columnItems.map(renderCard));
+    if (columnItems.length === 0) {
+      list.append(el('li', { class: 'empty', text: items.length === 0 ? 'Nothing tracked yet.' : 'Nothing here.' }));
+    }
+  }
+}
+
+/**
+ * @param {HTMLSelectElement} select
+ * @param {WorkItem[]} items
+ */
+function renderProjectOptions(select, items) {
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  for (const item of items) counts.set(item.project, (counts.get(item.project) ?? 0) + 1);
+  const projects = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+  select.append(...projects.map((project) => el('option', { value: project, text: `${project} (${counts.get(project)})` })));
+}
+
+/** @returns {Filters} */
+function readFilters() {
+  const params = new URLSearchParams(location.search);
+  return { query: params.get('q') ?? '', project: params.get('project') ?? '' };
+}
+
+/**
+ * Keeps filters in the URL so a filtered board can be shared as a link.
+ * @param {Filters} filters
+ */
+function writeFilters(filters) {
+  const params = new URLSearchParams();
+  if (filters.query) params.set('q', filters.query);
+  if (filters.project) params.set('project', filters.project);
+  const search = params.toString();
+  try {
+    history.replaceState(null, '', search ? `?${search}` : location.pathname);
+  } catch {
+    // Sandboxed frames can refuse history changes; filtering still works.
+  }
+}
+
+/** @param {string} message */
+function showNotice(message) {
+  const notice = document.getElementById('notice');
+  if (notice) notice.textContent = message;
+}
+
+/** @returns {Promise<Snapshot>} */
+async function loadSnapshot() {
+  const response = await fetch(SNAPSHOT_URL, { cache: 'no-cache' });
+  if (!response.ok) throw new Error(`${SNAPSHOT_URL} responded ${response.status}`);
+  return response.json();
+}
+
+async function main() {
+  const searchInput = /** @type {HTMLInputElement} */ (document.getElementById('search'));
+  const projectSelect = /** @type {HTMLSelectElement} */ (document.getElementById('project'));
+  const generatedAt = /** @type {HTMLElement} */ (document.getElementById('generated-at'));
+  const suggestLink = /** @type {HTMLAnchorElement} */ (document.getElementById('suggest'));
+
+  /** @type {Snapshot} */
+  let snapshot;
+  try {
+    snapshot = await loadSnapshot();
+  } catch (error) {
+    showNotice(`Could not load the board: ${errorMessage(error)}. To build it locally, run npm run refresh.`);
+    return;
+  }
+
+  renderProjectOptions(projectSelect, snapshot.items);
+  const filters = readFilters();
+  searchInput.value = filters.query;
+  projectSelect.value = filters.project;
+  filters.project = projectSelect.value;
+
+  generatedAt.textContent = `Updated ${relativeTime(snapshot.generatedAt)}`;
+  generatedAt.title = new Date(snapshot.generatedAt).toLocaleString();
+  if (snapshot.itemsEditUrl) {
+    suggestLink.href = snapshot.itemsEditUrl;
+    suggestLink.hidden = false;
+  }
+
+  const applyFilters = () => {
+    filters.query = searchInput.value;
+    filters.project = projectSelect.value;
+    writeFilters(filters);
+    renderBoard(snapshot.items, filters);
+  };
+  searchInput.addEventListener('input', applyFilters);
+  projectSelect.addEventListener('change', applyFilters);
+
+  renderBoard(snapshot.items, filters);
+}
+
+main();
+</script>
+</body>
+</html>
